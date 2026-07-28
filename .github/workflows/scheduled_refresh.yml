@@ -1,0 +1,59 @@
+name: Scheduled pipeline refresh
+
+# The real, working equivalent of the EventBridge Scheduler -> Step Functions
+# path defined in infra/eventbridge.tf and infra/stepfunctions.tf (not applied
+# against moto -- see those files). This actually fires on the schedule below
+# and runs the real pipeline against live data, unlike a cron trigger that
+# would only exist on paper. Every 5 minutes is comfortably inside OpenSky's
+# anonymous rate budget (400 req/2.2hr, i.e. ~1 req/20s sustained -- this
+# workflow uses one request per run); GDELT ingestion piggybacks on the same
+# cadence for free (no-op when its bulk export hasn't advanced).
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+
+    env:
+      AWS_ENDPOINT_URL: http://localhost:5000
+      AWS_REGION: eu-central-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      S3_BUCKET_NAME: gulf-airspace-traffic-monitor-dev
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.8"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Start moto_server
+        run: |
+          moto_server -p 5000 > moto_server.log 2>&1 &
+          for i in $(seq 1 20); do
+            curl -sf http://localhost:5000/moto-api/ && break
+            sleep 1
+          done
+
+      - name: Terraform apply (against moto)
+        working-directory: infra
+        run: |
+          terraform init -input=false
+          terraform apply -auto-approve -input=false -var-file=environments/moto.tfvars
+
+      - name: Run the pipeline against live data
+        run: python -m orchestrator.run_pipeline

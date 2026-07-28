@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Terraform
+infra/.terraform/
+infra/build/
+infra/terraform.tfstate
+infra/terraform.tfstate.backup
+*.tfstate
+*.tfstate.backup
+# infra/.terraform.lock.hcl is intentionally NOT ignored -- pins provider
+# versions and should be committed for reproducible `terraform init`.
+
+# Portable binaries (fetched via scripts/fetch_terraform_binary.sh)
+bin/
+
+# Full raw source downloads -- regenerable via the pipeline; trimmed
+# real samples for tests/demo live in data/samples/ instead
+data/raw_downloads/
+
+# Local runtime state
+logs/
+*.log
+dump.rdb
+
+# Secrets
+.env

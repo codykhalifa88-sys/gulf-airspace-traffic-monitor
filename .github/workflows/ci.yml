@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    env:
+      AWS_ENDPOINT_URL: http://localhost:5000
+      AWS_REGION: eu-central-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      S3_BUCKET_NAME: gulf-airspace-traffic-monitor-dev
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.8"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Start moto_server
+        run: |
+          moto_server -p 5000 > moto_server.log 2>&1 &
+          for i in $(seq 1 20); do
+            curl -sf http://localhost:5000/moto-api/ && break
+            sleep 1
+          done
+
+      - name: Terraform apply (against moto)
+        working-directory: infra
+        run: |
+          terraform init -input=false
+          terraform apply -auto-approve -input=false -var-file=environments/moto.tfvars
+
+      - name: Run the real pipeline against live data
+        run: python -m orchestrator.run_pipeline
+
+      - name: Unit tests (no AWS/network dependency)
+        run: pytest tests/unit -v
+
+      - name: Integration tests (against moto + applied infra)
+        run: pytest tests/integration -v
+
+      - name: Terraform destroy
+        if: always()
+        working-directory: infra
+        run: terraform destroy -auto-approve -input=false -var-file=environments/moto.tfvars

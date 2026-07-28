@@ -1,0 +1,9 @@
+# Real AWS deployment. Never applied in this project (no AWS account was
+# created for it -- see README "Key Design Decisions"). Documented so a
+# reviewer can see exactly what changes to go from moto to real AWS.
+aws_region                    = "eu-central-1"
+environment                   = "prod"
+moto_endpoint                 = ""
+kinesis_stream_name           = "gulf-airspace-states-prod"
+enable_real_aws_orchestration = true
+enable_glue_athena            = true
